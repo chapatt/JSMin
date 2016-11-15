@@ -26,12 +26,17 @@ SOFTWARE.
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
+#include "jsmin.h"
 
 static int   theA;
 static int   theB;
 static int   theLookahead = EOF;
 static int   theX = EOF;
 static int   theY = EOF;
+
+static char *bufp = NULL;
+static FILE *infilep;
 
 
 static void
@@ -41,6 +46,29 @@ error(char* s)
     fputs(s, stderr);
     fputc('\n', stderr);
     exit(1);
+}
+
+static int
+putcinbuf(int c)
+{
+    static size_t chunk_size = 32, last_chunk = 0, cursor = 0, free_space = 0;
+    char *tmp_bufp = NULL;
+    const int exp_base = 2; /* base of exponential growth of allocation */
+
+    if (!free_space) {
+        tmp_bufp = realloc(bufp, (chunk_size *= exp_base) * sizeof(*bufp));
+        if (tmp_bufp == NULL)
+            error("Failed to allocate memory!");
+        bufp = tmp_bufp;
+        free_space = (chunk_size - last_chunk) - 1; /* leave space for \0 */
+        last_chunk = chunk_size;
+    }
+
+    bufp[cursor++] = (unsigned char) c;
+    --free_space;
+    bufp[cursor] = '\0';
+
+    return (int) bufp[cursor - 1];
 }
 
 /* isAlphanum -- return true if the character is a letter, digit, underscore,
@@ -56,7 +84,7 @@ isAlphanum(int c)
 }
 
 
-/* get -- return the next character from stdin. Watch out for lookahead. If
+/* get -- return the next character from infilep. Watch out for lookahead. If
         the character is a control character, translate it to a space or
         linefeed.
 */
@@ -67,7 +95,7 @@ get()
     int c = theLookahead;
     theLookahead = EOF;
     if (c == EOF) {
-        c = getc(stdin);
+        c = getc(infilep);
     }
     if (c >= ' ' || c == '\n' || c == EOF) {
         return c;
@@ -144,25 +172,25 @@ action(int d)
 {
     switch (d) {
     case 1:
-        putc(theA, stdout);
+        putcinbuf(theA);
         if (
             (theY == '\n' || theY == ' ') &&
             (theA == '+' || theA == '-' || theA == '*' || theA == '/') &&
             (theB == '+' || theB == '-' || theB == '*' || theB == '/')
         ) {
-            putc(theY, stdout);
+            putcinbuf(theY);
         }
     case 2:
         theA = theB;
         if (theA == '\'' || theA == '"' || theA == '`') {
             for (;;) {
-                putc(theA, stdout);
+                putcinbuf(theA);
                 theA = get();
                 if (theA == theB) {
                     break;
                 }
                 if (theA == '\\') {
-                    putc(theA, stdout);
+                    putcinbuf(theA);
                     theA = get();
                 }
                 if (theA == EOF) {
@@ -178,22 +206,22 @@ action(int d)
             theA == '?' || theA == '+' || theA == '-' || theA == '~' ||
             theA == '*' || theA == '/' || theA == '{' || theA == '\n'
         )) {
-            putc(theA, stdout);
+            putcinbuf(theA);
             if (theA == '/' || theA == '*') {
-                putc(' ', stdout);
+                putcinbuf(' ');
             }
-            putc(theB, stdout);
+            putcinbuf(theB);
             for (;;) {
                 theA = get();
                 if (theA == '[') {
                     for (;;) {
-                        putc(theA, stdout);
+                        putcinbuf(theA);
                         theA = get();
                         if (theA == ']') {
                             break;
                         }
                         if (theA == '\\') {
-                            putc(theA, stdout);
+                            putcinbuf(theA);
                             theA = get();
                         }
                         if (theA == EOF) {
@@ -208,13 +236,13 @@ action(int d)
                     }
                     break;
                 } else if (theA =='\\') {
-                    putc(theA, stdout);
+                    putcinbuf(theA);
                     theA = get();
                 }
                 if (theA == EOF) {
                     error("Unterminated Regular Expression literal.");
                 }
-                putc(theA, stdout);
+                putcinbuf(theA);
             }
             theB = next();
         }
@@ -228,9 +256,11 @@ action(int d)
         Most spaces and linefeeds will be removed.
 */
 
-static void
-jsmin()
+char *
+jsmin(FILE *fp)
 {
+    infilep = fp;
+
     if (peek() == 0xEF) {
         get();
         get();
@@ -288,19 +318,6 @@ jsmin()
             }
         }
     }
-}
 
-
-/* main -- Output any command line arguments as comments
-        and then minify the input.
-*/
-extern int
-main(int argc, char* argv[])
-{
-    int i;
-    for (i = 1; i < argc; i += 1) {
-        fprintf(stdout, "// %s\n", argv[i]);
-    }
-    jsmin();
-    return 0;
+    return bufp;
 }
