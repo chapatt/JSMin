@@ -26,7 +26,6 @@ SOFTWARE.
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <string.h>
 #include "jsmin.h"
 
 static int   theA;
