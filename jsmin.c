@@ -24,9 +24,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+#include "jsmin.h"
 #include <stdlib.h>
 #include <stdio.h>
-#include "jsmin.h"
+#include <string.h>
 
 static int   theA;
 static int   theB;
@@ -258,6 +259,7 @@ action(int d)
 char *
 jsmin(FILE *fp)
 {
+    char *tmp_bufp = NULL;
     infilep = fp;
 
     if (peek() == 0xEF) {
@@ -317,6 +319,12 @@ jsmin(FILE *fp)
             }
         }
     }
+
+    /* free the unused portion of bufp */
+    tmp_bufp = realloc(bufp, (strlen(bufp) + 1) * sizeof(*bufp));
+    if (tmp_bufp == NULL)
+        error("Failed to reallocate memory!");
+    bufp = tmp_bufp;
 
     return bufp;
 }
